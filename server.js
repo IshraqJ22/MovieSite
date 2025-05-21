@@ -90,7 +90,7 @@ app.get("/test-auth", jwtMiddleware, (req, res) => {
   res.json({ message: "Middleware test successful", user: req.user });
 });
 
-// Apply jwtMiddleware to the /favourites route
+// Corrected column names and table references in the /favourites endpoint
 app.post("/favourites", jwtMiddleware, (req, res) => {
   if (!req.user) {
     console.error("User information is missing in the request.");
@@ -105,17 +105,32 @@ app.post("/favourites", jwtMiddleware, (req, res) => {
   console.log("User ID:", user_id, "Movie ID:", movie_id); // Log the user ID and movie ID
   console.log("Middleware executed for endpoint:", req.originalUrl); // Log the endpoint being accessed
 
-  const query = "INSERT INTO Favourites (user_id, movie_id) VALUES (?, ?)";
-  db.query(query, [user_id, movie_id], (err, results) => {
+  // Check if the movie_id exists in the Movies table
+  const checkMovieQuery = "SELECT movie_id FROM Movies WHERE movie_id = ?";
+  db.query(checkMovieQuery, [movie_id], (err, results) => {
     if (err) {
-      console.error("Error adding favourite movie:", err);
-      console.error("Query:", query);
-      console.error("Parameters:", { user_id, movie_id });
-      return res.status(500).send(err);
+      console.error("Error checking movie existence:", err);
+      return res.status(500).json({ message: "Internal server error." });
     }
-    console.log("Favourite added successfully for user ID:", user_id, "Movie ID:", movie_id);
-    console.log("Database response:", results);
-    res.json({ message: "Favourite added successfully!" });
+
+    if (results.length === 0) {
+      console.warn("Movie ID does not exist in the Movies table:", movie_id);
+      return res.status(400).json({ message: "Invalid movie_id: Movie does not exist." });
+    }
+
+    // Proceed to insert into Favourites table
+    const query = "INSERT INTO Favourites (user_id, movie_id) VALUES (?, ?)";
+    db.query(query, [user_id, movie_id], (err, results) => {
+      if (err) {
+        console.error("Error adding favourite movie:", err);
+        console.error("Query:", query);
+        console.error("Parameters:", { user_id, movie_id });
+        return res.status(500).send(err);
+      }
+      console.log("Favourite added successfully for user ID:", user_id, "Movie ID:", movie_id);
+      console.log("Database response:", results);
+      res.json({ message: "Favourite added successfully!" });
+    });
   });
 });
 
@@ -209,7 +224,7 @@ app.get("/user", (req, res) => {
   });
 });
 
-// Add logging and error handling for missing `req.user`
+// Corrected the JOIN condition to use Movies.movie_id instead of Movies.id
 app.get("/user/favourites", (req, res) => {
   if (!req.user) {
     console.error("User information is missing in the request.");
@@ -219,9 +234,9 @@ app.get("/user/favourites", (req, res) => {
   console.log("Fetching favourites for user ID:", req.user.id);
   const userId = req.user.id; // Extract user ID from JWT payload
   const query = `
-    SELECT Movies.id, Movies.title, Movies.release_date, Movies.poster_path
+    SELECT Movies.movie_id, Movies.title, Movies.release_date, Movies.poster_path
     FROM Favourites
-    JOIN Movies ON Favourites.movie_id = Movies.id
+    JOIN Movies ON Favourites.movie_id = Movies.movie_id
     WHERE Favourites.user_id = ?
   `;
   db.query(query, [userId], (err, results) => {
@@ -233,7 +248,7 @@ app.get("/user/favourites", (req, res) => {
   });
 });
 
-// Add logging to confirm if the endpoint is hit
+// Enhanced logging in /populate-movies endpoint to debug API response and database insertion
 app.post("/populate-movies", async (req, res) => {
   console.log("/populate-movies endpoint hit"); // Log when the endpoint is accessed
   try {
@@ -244,25 +259,37 @@ app.post("/populate-movies", async (req, res) => {
     const response = await fetch(apiUrl);
     const data = await response.json();
 
-    if (!data.results) {
-      console.error("Failed to fetch movies from the API."); // Log error if no results
-      return res.status(500).json({ message: "Failed to fetch movies from the API." });
+    if (!data.results || data.results.length === 0) {
+      console.error("No movies found in the API response:", data); // Log error if no results
+      return res.status(500).json({ message: "No movies found in the API response." });
     }
+
+    console.log("Movies fetched from API:", data.results.length); // Log the number of movies fetched
 
     // Insert movies into the Movies table
     const movies = data.results;
-    const query = "INSERT INTO Movies (id, title, release_date, poster_path) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE title=VALUES(title), release_date=VALUES(release_date), poster_path=VALUES(poster_path)";
+    const query = "INSERT INTO Movies (movie_id, title, release_date, poster_path, description) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE title=VALUES(title), release_date=VALUES(release_date), poster_path=VALUES(poster_path), description=VALUES(description)";
 
-    movies.forEach((movie) => {
-      db.query(query, [movie.id, movie.title, movie.release_date, movie.poster_path], (err) => {
+    for (const movie of movies) {
+      console.log("Preparing to insert movie:", {
+        movie_id: movie.id,
+        title: movie.title,
+        release_date: movie.release_date,
+        poster_path: movie.poster_path,
+        description: movie.overview,
+      }); // Log movie details before insertion
+
+      db.query(query, [movie.id, movie.title, movie.release_date, movie.poster_path, movie.overview], (err) => {
         if (err) {
           console.error("Error inserting movie into database:", err);
+        } else {
+          console.log("Movie inserted successfully:", movie.id);
         }
       });
-    });
+    }
 
-    console.log("Movies table populated successfully!"); // Log success message
-    res.json({ message: "Movies table populated successfully!" });
+    console.log("Movies table population process completed."); // Log completion message
+    res.json({ message: "Movies table population process completed." });
   } catch (error) {
     console.error("Error populating movies table:", error); // Log any errors
     res.status(500).json({ message: "Internal server error." });
