@@ -1,7 +1,10 @@
+console.log("STARTING CORRECT SERVER FILE: c/Users/ituser/Movie-Site-main/MovieSite/MovieSite/server.js");
+
 import express from "express";
 import mysql from "mysql2";
 import cors from "cors";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt"; // Import bcrypt for password hashing
 
 const app = express();
 app.use(cors());
@@ -67,6 +70,7 @@ const jwtMiddleware = (req, res, next) => {
   const token = authHeader.split(" ")[1];
   console.log("Extracted token:", token); // Log the extracted token
 
+  console.log("Token verification started");
   jwt.verify(token, SECRET_KEY, (err, user) => {
     if (err) {
       console.error("Token verification failed:", err.message); // Log the error message
@@ -74,6 +78,8 @@ const jwtMiddleware = (req, res, next) => {
       return res.status(403).json({ message: "Forbidden: Invalid token." });
     }
     console.log("Decoded user from token:", user); // Log the decoded user
+    console.log("Decoded user from token in jwtMiddleware:", user); // Log the decoded user
+    console.log("Request headers in jwtMiddleware:", req.headers); // Log the request headers
     req.user = user; // Attach user info to the request
     next();
   });
@@ -114,7 +120,7 @@ app.post("/favourites", jwtMiddleware, (req, res) => {
 });
 
 // Enhanced logging for debugging `/register` endpoint
-app.post("/register", (req, res) => {
+app.post("/register", async (req, res) => {
   console.log("Incoming registration request:", req.body);
   const { username, email, password } = req.body;
   if (!username || !email || !password) {
@@ -122,15 +128,29 @@ app.post("/register", (req, res) => {
     return res.status(400).json({ message: "All fields are required." });
   }
 
-  const query = "INSERT INTO Users (username, email, password) VALUES (?, ?, ?)";
-  db.query(query, [username, email, password], (err, results) => {
-    if (err) {
-      console.error("Error during user registration:", err);
-      return res.status(500).json({ message: "Internal server error." });
-    }
-    console.log("User registered successfully:", results);
-    res.json({ message: "User registered successfully!" });
-  });
+  try {
+    // Hash the password before storing it in the database
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const query = "INSERT INTO Users (username, email, password) VALUES (?, ?, ?)";
+    db.query(query, [username, email, hashedPassword], (err, results) => {
+      if (err) {
+        if (err.code === "ER_DUP_ENTRY") {
+          console.error("Duplicate entry error during registration:", err);
+          return res.status(409).json({ message: "Username or email already exists." });
+        }
+        console.error("Error during user registration:", err);
+        console.error("Query:", query);
+        console.error("Parameters:", { username, email });
+        return res.status(500).json({ message: "Internal server error." });
+      }
+      console.log("User registered successfully:", results);
+      res.json({ message: "User registered successfully!" });
+    });
+  } catch (error) {
+    console.error("Error hashing password:", error);
+    res.status(500).json({ message: "Internal server error." });
+  }
 });
 
 // Enhanced logging for debugging `/login` endpoint
@@ -211,6 +231,48 @@ app.get("/user/favourites", (req, res) => {
     }
     res.json(results);
   });
+});
+
+// Add logging to confirm if the endpoint is hit
+app.post("/populate-movies", async (req, res) => {
+  console.log("/populate-movies endpoint hit"); // Log when the endpoint is accessed
+  try {
+    const apiKey = "1fcaeba1e6de59a2df5df2503103516a"; // Replace with your TMDb API key
+    const apiUrl = `https://api.themoviedb.org/3/movie/popular?api_key=${apiKey}`;
+
+    // Fetch movies from the external API
+    const response = await fetch(apiUrl);
+    const data = await response.json();
+
+    if (!data.results) {
+      console.error("Failed to fetch movies from the API."); // Log error if no results
+      return res.status(500).json({ message: "Failed to fetch movies from the API." });
+    }
+
+    // Insert movies into the Movies table
+    const movies = data.results;
+    const query = "INSERT INTO Movies (id, title, release_date, poster_path) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE title=VALUES(title), release_date=VALUES(release_date), poster_path=VALUES(poster_path)";
+
+    movies.forEach((movie) => {
+      db.query(query, [movie.id, movie.title, movie.release_date, movie.poster_path], (err) => {
+        if (err) {
+          console.error("Error inserting movie into database:", err);
+        }
+      });
+    });
+
+    console.log("Movies table populated successfully!"); // Log success message
+    res.json({ message: "Movies table populated successfully!" });
+  } catch (error) {
+    console.error("Error populating movies table:", error); // Log any errors
+    res.status(500).json({ message: "Internal server error." });
+  }
+});
+
+// Temporary test endpoint to verify server routing
+app.get("/test-endpoint", (req, res) => {
+  console.log("/test-endpoint hit"); // Log when the endpoint is accessed
+  res.json({ message: "Test endpoint is working!" });
 });
 
 // Start the server

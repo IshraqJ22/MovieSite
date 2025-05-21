@@ -33,6 +33,10 @@ export const MovieProvider = ({ children }) => {
     // Log the token format for debugging
     console.log("Formatted Authorization header:", `Bearer ${token}`);
 
+    // Log the token retrieved from localStorage
+    console.log("Retrieved token from localStorage:", token);
+
+    // Log the response from the /favourites endpoint
     fetch("http://localhost:5000/favourites", {
       method: "POST",
       headers: {
@@ -42,6 +46,7 @@ export const MovieProvider = ({ children }) => {
       body: JSON.stringify({ movie_id: movie.id }), // Use TMDb `id` as `movie_id`
     })
       .then((response) => {
+        console.log("Response status from /favourites endpoint:", response.status);
         if (!response.ok) {
           throw new Error("Failed to add favourite movie to the database");
         }
