@@ -2,14 +2,14 @@ import "../css/MovieCard.css";
 import { useMovieContext } from "../contexts/MovieContexts";
 
 function MovieCard({ movie }) {
-  const { isFavourite, addToFavourite, removeFromFavourites } =
+  const { isFavourite, addToFavourites, removeFromFavourites } =
     useMovieContext();
   const favourite = isFavourite(movie.id);
 
   function onFavouriteClick(e) {
     e.preventDefault();
     if (favourite) removeFromFavourites(movie.id);
-    else addToFavourite(movie);
+    else addToFavourites(movie);
   }
 
   return (
@@ -23,8 +23,9 @@ function MovieCard({ movie }) {
           <button
             className={`favourite-btn ${favourite ? "active" : ""}`}
             onClick={onFavouriteClick}
+            style={{ color: favourite ? "red" : "black" }}
           >
-            ♡
+            {favourite ? "❤️" : "♡"}
           </button>
         </div>
       </div>

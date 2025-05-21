@@ -16,7 +16,7 @@ export const MovieProvider = ({ children }) => {
     localStorage.setItem("favourites", JSON.stringify(favourites));
   }, [favourites]);
 
-  const addToFacourites = (movie) => {
+  const addToFavourites = (movie) => {
     setFavourites((prev) => [...prev, movie]);
   };
 
@@ -30,7 +30,7 @@ export const MovieProvider = ({ children }) => {
 
   const value = {
     favourites,
-    addToFacourites,
+    addToFavourites,
     removeFromFavourites,
     isFavourite,
   };
